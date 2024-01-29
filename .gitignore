@@ -1,7 +1,6 @@
 .idea
+bin
+obj
 .env
-Utils/moodle-scraper/.env
-Utils/moodle-scraper/chromedriver.exe
+chromedriver.exe
 acl.json
-Bot/bin
-Bot/obj
