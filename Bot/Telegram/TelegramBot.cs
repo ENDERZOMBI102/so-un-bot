@@ -6,194 +6,164 @@ using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using File = System.IO.File;
 
-namespace SoUnBot.Telegram
-{
-    internal class TelegramBot
-    {
-        private AccessManager _accessManager;
-        private string _moth_path;
-        
-        private Dictionary<string, IModule> _modules;
-        public TelegramBotClient BotClient { get; private set; }
-        private Dictionary<long, IModule> _usersContext;
+namespace SoUnBot.Telegram;
 
-        public TelegramBot(string token, AccessManager accessManager, string motd_path, Dictionary<string, IModule> modules)
-        {
-            _accessManager = accessManager;
-            _moth_path = motd_path;
-            _modules = modules;
-            _usersContext = new Dictionary<long, IModule>();
-            BotClient = new TelegramBotClient(token);
+internal class TelegramBot {
+	private readonly AccessManager _accessManager;
 
-            using var cts = new CancellationTokenSource();
+	private readonly Dictionary<string, IModule> _modules;
+	private readonly string _moth_path;
+	private readonly Dictionary<long, IModule> _usersContext;
 
-            // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
-            var receiverOptions = new ReceiverOptions
-            {
-                AllowedUpdates = { } // receive all update types
-            };
-            BotClient.StartReceiving(
-                HandleUpdateAsync,
-                HandleErrorAsync,
-                receiverOptions,
-                cancellationToken: cts.Token);
+	public TelegramBotClient BotClient { get; }
 
-            GetMe();
-        }
+	public TelegramBot( string token, AccessManager accessManager, string motd_path, Dictionary<string, IModule> modules ) {
+		_accessManager = accessManager;
+		_moth_path = motd_path;
+		_modules = modules;
+		_usersContext = new Dictionary<long, IModule>();
+		BotClient = new TelegramBotClient( token );
 
-        private async void GetMe()
-        {
-            var me = await BotClient.GetMeAsync();
-            Console.WriteLine($"Start listening for @{me.Username}");
-        }
+		using var cts = new CancellationTokenSource();
 
-        async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
-        {
-            try
-            {
-                            long chatId;
+		// StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
+		var receiverOptions = new ReceiverOptions();
+		BotClient.StartReceiving(
+			HandleUpdateAsync,
+			HandleErrorAsync,
+			receiverOptions,
+			cts.Token );
 
-            if (update.Type == UpdateType.CallbackQuery)
-            {
-                chatId = update.CallbackQuery.From.Id;
-                if (update.CallbackQuery.Message.Text.StartsWith("ACM: ") && update.CallbackQuery.Data.Contains("Grant"))
-                {
-                    long uid = int.Parse(update.CallbackQuery.Message.Text.Substring(5).Split('\n')[0]);
-                    string perm = update.CallbackQuery.Message.Text.Split("Ha richiesto l'accesso a: ")[1];
-                    _accessManager.GrantPermission(uid, perm);
+		GetMe();
+	}
+	
+	private async void GetMe() {
+		var me = await BotClient.GetMeAsync();
+		Console.WriteLine( $"Start listening for @{me.Username}" );
+	}
 
-                    await botClient.AnswerCallbackQueryAsync(
-                        update.CallbackQuery.Id,
-                        "Successo!"
-                        );
-                    await botClient.SendTextMessageAsync(
-                        uid,
-                        "✅ Congratulazioni! Hai ottenuto l'accesso a: " + perm
-                        );
-                    return;
-                }
-                if (update.CallbackQuery.Message.Text.StartsWith("ACM") && update.CallbackQuery.Data.Contains("🔆 Richiedi accesso"))
-                {
-                    string perm = update.CallbackQuery.Message.Text.Split('`')[1];
-                    _accessManager.AskPermission(update.CallbackQuery.From, perm, botClient);
-                    await botClient.AnswerCallbackQueryAsync(
-                        update.CallbackQuery.Id,
-                        "Richiesta effettuata"
-                        );
-                    await botClient.EditMessageTextAsync(
-                        update.CallbackQuery.From.Id,
-                        update.CallbackQuery.Message.MessageId,
-                        update.CallbackQuery.Message.Text,
-                        replyMarkup: new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("Richiesto 〽️"))
-                        );
-                    return;
-                }
-                if (update.CallbackQuery.Message.Text.StartsWith("ACM")) {
-                    return;
-                }
-            }
+	private async Task HandleUpdateAsync( ITelegramBotClient botClient, Update update, CancellationToken cancellationToken ) {
+		try {
+			long chatId;
 
-            if (update.Type != UpdateType.Message) // this is temp
-                return;
-            if (update.Message!.Type != MessageType.Text)
-                return;
+			if ( update.Type == UpdateType.CallbackQuery ) {
+				chatId = update.CallbackQuery.From.Id;
+				if ( update.CallbackQuery.Message.Text.StartsWith( "ACM: " ) &&
+				     update.CallbackQuery.Data.Contains( "Grant" ) ) {
+					long uid = int.Parse( update.CallbackQuery.Message.Text.Substring( 5 ).Split( '\n' )[0] );
+					var perm = update.CallbackQuery.Message.Text.Split( "Ha richiesto l'accesso a: " )[1];
+					_accessManager.GrantPermission( uid, perm );
 
-            chatId = update.Message.Chat.Id;
+					await botClient.AnswerCallbackQueryAsync(
+						update.CallbackQuery.Id,
+						"Successo!"
+					);
+					await botClient.SendTextMessageAsync(
+						uid,
+						"✅ Congratulazioni! Hai ottenuto l'accesso a: " + perm
+					);
+					return;
+				}
 
-            if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text && update.Message.Text.StartsWith("/spam"))
-            {
-                if (!_accessManager.CheckPermission(update.Message.From, "global.spam", botClient)) return;
+				if ( update.CallbackQuery.Message.Text.StartsWith( "ACM" ) &&
+				     update.CallbackQuery.Data.Contains( "🔆 Richiedi accesso" ) ) {
+					var perm = update.CallbackQuery.Message.Text.Split( '`' )[1];
+					_accessManager.AskPermission( update.CallbackQuery.From, perm, botClient );
+					await botClient.AnswerCallbackQueryAsync(
+						update.CallbackQuery.Id,
+						"Richiesta effettuata"
+					);
+					await botClient.EditMessageTextAsync(
+						update.CallbackQuery.From.Id,
+						update.CallbackQuery.Message.MessageId,
+						update.CallbackQuery.Message.Text,
+						replyMarkup: new InlineKeyboardMarkup( InlineKeyboardButton.WithCallbackData( "Richiesto 〽️" ) )
+					);
+					return;
+				}
 
-                await botClient.SendTextMessageAsync(
-                        chatId: chatId,
-                        text: "Invio annuncio in corso...");
-                new Thread(() => 
-                {
-                    Thread.CurrentThread.IsBackground = true; 
-                    SendToEveryone(botClient, chatId, update.Message.Text.Substring(6));
-                }).Start();
-                return;
-            }
+				if ( update.CallbackQuery.Message.Text.StartsWith( "ACM" ) )
+					return;
+			}
 
-            if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text && update.Message.Text == "/leave")
-            {
-                _usersContext.Remove(chatId);
-            }
+			if ( update.Type != UpdateType.Message ) // this is temp
+				return;
+			if ( update.Message!.Type != MessageType.Text )
+				return;
 
-            if (_usersContext.ContainsKey(chatId))
-            {
-                _usersContext[chatId].ProcessUpdate(botClient, update, cancellationToken);
-                return;
-            }
+			chatId = update.Message.Chat.Id;
 
-            if (update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text)
-            {
-                var msg = update.Message.Text.StartsWith("/") ? update.Message.Text.Substring(1) : update.Message.Text;
-                if (_modules.ContainsKey(msg))
-                {
-                    _usersContext.Add(chatId, _modules[msg]);
-                    _modules[msg].ProcessUpdate(botClient, update, cancellationToken);
-                    return;
-                }
-            }
+			if ( update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text &&
+			     update.Message.Text.StartsWith( "/spam" ) ) {
+				if ( !_accessManager.CheckPermission( update.Message.From, "global.spam", botClient ) )
+					return;
 
-            string validModules = _modules.Keys.Select(i => "/" + i).Aggregate((a, b) => a + "\n" + b);
+				await botClient.SendTextMessageAsync(
+					chatId,
+					"Invio annuncio in corso..." );
+				new Thread( () => {
+					Thread.CurrentThread.IsBackground = true;
+					SendToEveryone( botClient, chatId, update.Message.Text.Substring( 6 ) );
+				} ).Start();
+				return;
+			}
 
-            var motd = System.IO.File.ReadAllText(_moth_path);
+			if ( update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text &&
+			     update.Message.Text == "/leave" )
+				_usersContext.Remove( chatId );
 
-            // Echo received message text
-            Message sentMessage = await botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: motd);
-            }
-            catch(Exception e)
-            {
-                Console.WriteLine("Error handling the update: " + e.Message);
-            }
-        }
+			if ( _usersContext.ContainsKey( chatId ) ) {
+				_usersContext[chatId].ProcessUpdate( botClient, update, cancellationToken );
+				return;
+			}
 
-        async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-        {
-            if (exception is ApiRequestException apiRequestException)
-            {
-                await botClient.SendTextMessageAsync(_accessManager.AdminId, apiRequestException.ToString());
-            }
+			if ( update.Type == UpdateType.Message && update.Message!.Type == MessageType.Text ) {
+				var msg = update.Message.Text.StartsWith( "/" )
+					? update.Message.Text.Substring( 1 )
+					: update.Message.Text;
+				if ( _modules.ContainsKey( msg ) ) {
+					_usersContext.Add( chatId, _modules[msg] );
+					_modules[msg].ProcessUpdate( botClient, update, cancellationToken );
+					return;
+				}
+			}
 
-            // Restart the bot (otherwise it would become an amoeba)
-            using var cts = new CancellationTokenSource();
-            var receiverOptions = new ReceiverOptions
-            {
-                AllowedUpdates = { }
-            };
-            BotClient.StartReceiving(
-                HandleUpdateAsync,
-                HandleErrorAsync,
-                receiverOptions,
-                cancellationToken: cts.Token);
-        }
+			var validModules = _modules.Keys.Select( i => "/" + i ).Aggregate( ( a, b ) => a + "\n" + b );
 
-        private async void SendToEveryone(ITelegramBotClient botClient, long chatId, string text)
-        {
-            foreach (long user in _accessManager.Users())
-            {
-                try
-                {
-                    Console.WriteLine("Sto spammando a" + user.ToString());
-                    await botClient.SendTextMessageAsync(
-                        chatId: user,
-                        text: text
-                    );
-                    await Task.Delay(100);
-                }
-                catch
-                {
-                    Console.WriteLine("Ho fallito");
-                }
-            }
-            await botClient.SendTextMessageAsync(
-                chatId: chatId,
-                text: "✅ Annunciato a tutti!");
-        }
-    }
+			var motd = File.ReadAllText( _moth_path );
+
+			// Echo received message text
+			var sentMessage = await botClient.SendTextMessageAsync( chatId, motd );
+		} catch ( Exception e ) {
+			Console.WriteLine( "Error handling the update: " + e.Message );
+		}
+	}
+
+	private async Task HandleErrorAsync( ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken ) {
+		if ( exception is ApiRequestException apiRequestException )
+			await botClient.SendTextMessageAsync( _accessManager.AdminId, apiRequestException.ToString() );
+
+		// Restart the bot (otherwise it would become an amoeba)
+		using var cts = new CancellationTokenSource();
+		var receiverOptions = new ReceiverOptions();
+		BotClient.StartReceiving( HandleUpdateAsync, HandleErrorAsync, receiverOptions, cts.Token );
+	}
+
+	private async void SendToEveryone( ITelegramBotClient botClient, long chatId, string text ) {
+		foreach ( var user in _accessManager.Users() )
+			try {
+				Console.WriteLine( $"Sto spammando a {user}" );
+				await botClient.SendTextMessageAsync(
+					user,
+					text
+				);
+				await Task.Delay( 100 );
+			} catch {
+				Console.WriteLine( "Ho fallito" );
+			}
+
+		await botClient.SendTextMessageAsync( chatId, "✅ Annunciato a tutti!" );
+	}
 }
