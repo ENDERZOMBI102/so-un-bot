@@ -1,15 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-    
-  <Import Project="Bot/Bot.csproj"/>
+<!-- This solution is here just to get the `Data` and `Utils` folder into the project view -->
+<Project>
+    <Import Project="Bot/Bot.csproj"/>
 
-  <ItemGroup>
-    <Folder Include="Data" />
-    <Folder Include="Utils" />
-  </ItemGroup>
+    <ItemGroup>
+        <Folder Include="Data" />
+        <Folder Include="Utils" />
+    </ItemGroup>
 </Project>
